@@ -1,6 +1,7 @@
 package restservices.util;
 
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -34,12 +35,12 @@ public class JsonSerializer {
 	 * @return
 	 * @throws Exception 
 	 */
-	public static Object identifierToJSON(IContext context, IMendixIdentifier id, boolean useServiceUrls) throws Exception {
-		return identifierToJSON(context, id, new HashSet<Long>(), useServiceUrls);
+	public static Object identifierToJSON(IContext context, IMendixIdentifier id, boolean useServiceUrls, String currentMemberName) throws Exception {
+		return identifierToJSON(context, id, new HashSet<Long>(), useServiceUrls, new HashSet<String>());
 	}
 	
 	
-	private static Object identifierToJSON(IContext context, IMendixIdentifier id, Set<Long> alreadySeen, boolean useServiceUrls) throws Exception {
+	private static Object identifierToJSON(IContext context, IMendixIdentifier id, Set<Long> alreadySeen, boolean useServiceUrls, Set<String> currentMemberNames) throws Exception {
 		if (id == null)
 			return null;
 		
@@ -76,12 +77,13 @@ public class JsonSerializer {
 		if (obj == null) {
 			RestServices.LOGUTIL.warn("Failed to retrieve identifier: " + id + ", does the object still exist?");
 			return null;
-		}
-		else if (obj.getType().equals(Primitive.entityName)) {
+		} else if (obj.getType().equals(Primitive.entityName)) {
 			return writePrimitiveToJson(context, Primitive.initialize(context, obj));
+		} else if (obj.getType().endsWith("_array")) {
+			return writeMendixObjectToJson_array(context, obj, alreadySeen, useServiceUrls, currentMemberNames);
+		} else {
+			return writeMendixObjectToJson_internal(context, obj, alreadySeen, useServiceUrls, currentMemberNames);
 		}
-		else
-			return writeMendixObjectToJson(context, obj, alreadySeen, useServiceUrls);
 	}
 
 	private static Object writePrimitiveToJson(IContext context, Primitive primitive) {
@@ -108,10 +110,11 @@ public class JsonSerializer {
 	}
 	
 	public static JSONObject writeMendixObjectToJson(IContext context, IMendixObject view, boolean useServiceUrls) throws Exception {
-		return writeMendixObjectToJson(context, view, new HashSet<Long>(), useServiceUrls);
+		
+		return writeMendixObjectToJson_internal(context, view, new HashSet<Long>(), useServiceUrls, new HashSet<String>());
 	}
 	
-	private static JSONObject writeMendixObjectToJson(IContext context, IMendixObject view, Set<Long> alreadySeen, boolean useServiceUrls) throws Exception {
+	private static JSONObject writeMendixObjectToJson_internal(IContext context, IMendixObject view, Set<Long> alreadySeen, boolean useServiceUrls, Set<String> currentMemberNames) throws Exception {
 		if (view == null)
 			throw new IllegalArgumentException("Mendix to JSON conversion expects an object");
 		
@@ -121,11 +124,77 @@ public class JsonSerializer {
 		JSONObject res = new JSONObject();
 
 		Map<String, ? extends IMendixObjectMember<?>> members = view.getMembers(context);
-		for(java.util.Map.Entry<String, ? extends IMendixObjectMember<?>> e : members.entrySet())
-			serializeMember(context, res, getTargetMemberName(context, view, e.getKey()), e.getValue(), view.getMetaObject(), alreadySeen, useServiceUrls);
+		Map<String, IMendixIdentifier> references = new HashMap<String, IMendixIdentifier>();
+		Map<String, List<IMendixIdentifier>> referenceSets = new HashMap<String, List<IMendixIdentifier>>();
+		for(java.util.Map.Entry<String, ? extends IMendixObjectMember<?>> e : members.entrySet()) {
+			if (currentMemberNames != null) {
+				if (!currentMemberNames.contains(e.getKey())) {
+					serializeMember(context, res, getTargetMemberName(context, view, e.getKey()), e.getValue(), view.getMetaObject(), alreadySeen, useServiceUrls, currentMemberNames, references, referenceSets);
+				}
+			} else {
+				serializeMember(context, res, getTargetMemberName(context, view, e.getKey()), e.getValue(), view.getMetaObject(), alreadySeen, useServiceUrls, currentMemberNames, references, referenceSets);
+			}
+		}
+		
+		for(java.util.Map.Entry<String, IMendixIdentifier> e : references.entrySet()) {
+			Object jsonValue = null;
+			if (e.getValue() != null)
+			{
+				currentMemberNames.add(e.getKey());
+				jsonValue = identifierToJSON(context, e.getValue(), alreadySeen, useServiceUrls, currentMemberNames);
+			}
+			
+			if (jsonValue == null)
+				res.put(getTargetMemberName(context, view, e.getKey()), JSONObject.NULL);
+			else
+				res.put(getTargetMemberName(context, view, e.getKey()), jsonValue);
+		}
+		
+		for(java.util.Map.Entry<String, List<IMendixIdentifier>> e : referenceSets.entrySet()) {
+			JSONArray ar = new JSONArray();
+			if (e.getValue() != null) {
+				Utils.sortIdList(e.getValue());
+				for(IMendixIdentifier id : e.getValue()) 
+				{
+					if (id != null) {
+						currentMemberNames.add(e.getKey());
+						Object url = identifierToJSON(context, id, alreadySeen, useServiceUrls, currentMemberNames);
+						if (url != null)
+							ar.put(url);
+					}
+				}
+			}
+			res.put(getTargetMemberName(context, view, e.getKey()), ar);
+		}
 		
 		return res;
 	}
+	
+	private static String writeMendixObjectToJson_array(IContext context, IMendixObject view, Set<Long> alreadySeen, boolean useServiceUrls, Set<String> currentMemberNames) throws Exception {
+		if (view == null)
+			throw new IllegalArgumentException("Mendix to JSON conversion expects an object");
+		
+		if (!Utils.hasDataAccess(view.getMetaObject(), context))
+			throw new IllegalStateException("During JSON serialization: Object of type '" + view.getType() + "' has no readable members for users with role(s) " + context.getSession().getUserRolesNames() + ". Please check the security rules");
+		
+		JSONObject res = new JSONObject();
+		String key = "";
+
+		Map<String, ? extends IMendixObjectMember<?>> members = view.getMembers(context);
+		for(java.util.Map.Entry<String, ? extends IMendixObjectMember<?>> e : members.entrySet()) {
+			key = getTargetMemberName(context, view, e.getKey());
+			if (currentMemberNames != null) {
+				if (!currentMemberNames.contains(e.getKey())) {
+					serializeMember(context, res, getTargetMemberName(context, view, e.getKey()), e.getValue(), view.getMetaObject(), alreadySeen, useServiceUrls, currentMemberNames, null, null);
+				}
+			} else {
+				serializeMember(context, res, getTargetMemberName(context, view, e.getKey()), e.getValue(), view.getMetaObject(), alreadySeen, useServiceUrls, currentMemberNames, null, null);
+			}
+		}
+		
+		return res.getString(key);
+	}
+	
 
 	private static String getTargetMemberName(IContext context,
 			IMendixObject view, String sourceAttr) {
@@ -141,7 +210,8 @@ public class JsonSerializer {
 
 	@SuppressWarnings("deprecation")
 	private static void serializeMember(IContext context, JSONObject target, String targetMemberName, 
-			IMendixObjectMember<?> member, IMetaObject viewType, Set<Long> alreadySeen, boolean useServiceUrls) throws Exception {
+			IMendixObjectMember<?> member, IMetaObject viewType, Set<Long> alreadySeen, boolean useServiceUrls, Set<String> currentMemberNames,
+			Map<String, IMendixIdentifier> references, Map<String, List<IMendixIdentifier>> refereceSets) throws Exception {
 		if (context == null)
 			throw new IllegalStateException("Context is null");
 	
@@ -209,31 +279,41 @@ public class JsonSerializer {
 		 * Reference
 		 */
 		else if (member instanceof MendixObjectReference){
-			if (value != null) 
-				value = identifierToJSON(context, (IMendixIdentifier) value, alreadySeen, useServiceUrls);
-			
-			if (value == null)
-				target.put(targetMemberName, JSONObject.NULL);
-			else
-				target.put(targetMemberName, value);
+			currentMemberNames.add(memberName);
+			references.put(memberName, (IMendixIdentifier) value);
+//			if (value != null)
+//			{
+//				currentMemberNames.add(memberName);
+//				value = identifierToJSON(context, (IMendixIdentifier) value, alreadySeen, useServiceUrls, currentMemberNames);
+//			}
+//			
+//			if (value == null)
+//				target.put(targetMemberName, JSONObject.NULL);
+//			else
+//				target.put(targetMemberName, value);
 		}
 		
 		/**
 		 * Referenceset
 		 */
 		else if (member instanceof MendixObjectReferenceSet){
-			JSONArray ar = new JSONArray();
-			if (value != null) {
-				@SuppressWarnings("unchecked")
-				List<IMendixIdentifier> ids = (List<IMendixIdentifier>) value;
-				Utils.sortIdList(ids);
-				for(IMendixIdentifier id : ids) if (id != null) {
-					Object url = identifierToJSON(context, id, alreadySeen, useServiceUrls);
-					if (url != null)
-						ar.put(url);
-				}
-			}
-			target.put(targetMemberName, ar);			
+			currentMemberNames.add(memberName);
+			@SuppressWarnings("unchecked")
+			List<IMendixIdentifier> values = (List<IMendixIdentifier>) value;
+			refereceSets.put(memberName, values);
+//			JSONArray ar = new JSONArray();
+//			if (value != null) {
+//				@SuppressWarnings("unchecked")
+//				List<IMendixIdentifier> ids = (List<IMendixIdentifier>) value;
+//				Utils.sortIdList(ids);
+//				for(IMendixIdentifier id : ids) if (id != null) {
+//					currentMemberNames.add(memberName);
+//					Object url = identifierToJSON(context, id, alreadySeen, useServiceUrls, currentMemberNames);
+//					if (url != null)
+//						ar.put(url);
+//				}
+//			}
+//			target.put(targetMemberName, ar);			
 		}
 		
 		else

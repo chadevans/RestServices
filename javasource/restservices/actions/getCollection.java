@@ -48,7 +48,7 @@ public class getCollection extends CustomJavaAction<Boolean>
 			throw new IllegalArgumentException("firstResult parameter should be set");
 		if (resultList == null)
 			throw new IllegalArgumentException("resultList parameter should be set");
-		RestConsumer.getCollection(getContext(), collectionUrl, __resultList, __firstResult);
+		RestConsumer.getCollection(getContext(), collectionUrl, null, __resultList, __firstResult);
 		return true;
 		// END USER CODE
 	}

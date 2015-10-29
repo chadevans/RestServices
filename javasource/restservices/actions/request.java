@@ -40,7 +40,7 @@ public class request extends CustomJavaAction<IMendixObject>
 	public IMendixObject executeAction() throws Exception
 	{
 		// BEGIN USER CODE
-		return RestConsumer.request(getContext(), method == null ? HttpMethod.GET : method, url, optRequestData, optResponseData, sendWithFormEncoding).getMendixObject();
+		return RestConsumer.request(getContext(), method == null ? HttpMethod.GET : method, url, optRequestData, null, optResponseData, sendWithFormEncoding).getMendixObject();
 		// END USER CODE
 	}
 

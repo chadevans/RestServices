@@ -258,6 +258,7 @@ public class RestConsumer {
 			else if (request instanceof PutMethod && requestEntity != null)
 				((PutMethod)request).setRequestEntity(requestEntity);
 		
+			//client.getHostConfiguration().setProxy("localhost", 8888);
 			int status = client.executeMethod(request);
 			Header responseEtag = request.getResponseHeader(RestServices.HEADER_ETAG);
 			
@@ -301,6 +302,7 @@ public class RestConsumer {
 	
 	public static void readJsonObjectStream(String url, final Predicate<Object> onObject) throws Exception, IOException {
 		lastConsumeError.set(null);
+		
 		HttpResponseData response = doRequest("GET", url, null, null, null, new Predicate<InputStream>() {
 
 			@Override
@@ -345,8 +347,13 @@ public class RestConsumer {
 		client.getState().setCredentials(new AuthScope(url.getHost(), url.getPort(), AuthScope.ANY_REALM), defaultcreds);
 	}
 
-	private static void getCollectionHelper(final IContext context, String collectionUrl, final Function<IContext, IMendixObject> objectFactory, final Function<IMendixObject, Boolean> callback) throws Exception
+	private static void getCollectionHelper(final IContext context, String collectionUrl, final IMendixObject requestData, final Function<IContext, IMendixObject> objectFactory, final Function<IMendixObject, Boolean> callback) throws Exception
 	{
+		final JSONObject data = requestData == null ? null : JsonSerializer.writeMendixObjectToJson(context, requestData, false);
+		
+		Map<String, String> params = new HashMap<String, String>();
+		collectionUrl = updateUrlPathComponentsWithParams(collectionUrl, false, false, data, params);
+
 		RestConsumer.readJsonObjectStream(collectionUrl, new Predicate<Object>() {
 
 			@Override
@@ -363,11 +370,11 @@ public class RestConsumer {
 		});
 	}
 	
-	public static void getCollection(final IContext context, String collectionUrl, final List<IMendixObject> resultList, final IMendixObject firstResult) throws Exception {
+	public static void getCollection(final IContext context, String collectionUrl, final IMendixObject requestData, final List<IMendixObject> resultList, final IMendixObject firstResult) throws Exception {
 		if (resultList == null || resultList.size() > 0)
 			throw new RuntimeException("Expected stub collection to have size 0");
 		
-		getCollectionHelper(context, collectionUrl, new Function<IContext, IMendixObject>() {
+		getCollectionHelper(context, collectionUrl, requestData, new Function<IContext, IMendixObject>() {
 			
 			@Override
 			public IMendixObject apply(IContext arg0) {
@@ -398,7 +405,7 @@ public class RestConsumer {
 		
 		final IContext context = Core.createSystemContext();
 		
-		getCollectionHelper(context, collectionUrl, new Function<IContext, IMendixObject>() {
+		getCollectionHelper(context, collectionUrl, null, new Function<IContext, IMendixObject>() {
 			@Override
 			public IMendixObject apply(IContext arg0) {
 				return Core.instantiate(arg0, entityType);
@@ -416,9 +423,14 @@ public class RestConsumer {
 			}
 		});
 	}
-	
+
 	public static RequestResult request(final IContext context, HttpMethod method, String url, 
 			final IMendixObject source, final IMendixObject target, final boolean asFormData) throws Exception {
+		return request(context, method, url, source, null, target, asFormData);
+	}
+	
+	public static RequestResult request(final IContext context, HttpMethod method, String url, 
+			final IMendixObject source, final String sourceString, final IMendixObject target, final boolean asFormData) throws Exception {
 		lastConsumeError.set(null);
 		
 		if (context == null)
@@ -454,6 +466,8 @@ public class RestConsumer {
 			requestHeaders.put(RestServices.HEADER_CONTENTTYPE, RestServices.CONTENTTYPE_FORMENCODED);
 		else if (data != null && data.length() != 0)
 			requestEntity = new StringRequestEntity(data.toString(4), RestServices.CONTENTTYPE_APPLICATIONJSON, RestServices.UTF8);
+		else if (sourceString != null && sourceString.length() > 0)
+			requestEntity = new StringRequestEntity(sourceString, RestServices.CONTENTTYPE_APPLICATIONJSON, RestServices.UTF8);
 		
 		final StringBuilder bodyBuffer = new StringBuilder();
 		HttpResponseData response = doRequest(method.toString(), url, requestHeaders, params, requestEntity, new Predicate<InputStream>() {
@@ -648,8 +662,8 @@ public class RestConsumer {
 	}
 	
 	public static RequestResult postObject(IContext context, String collectionUrl,
-			IMendixObject dataObject, IMendixObject targetObject) throws Exception {
-		return request(context, HttpMethod.POST, collectionUrl, dataObject, targetObject, false);
+			IMendixObject dataObject, String dataString, IMendixObject targetObject) throws Exception {
+		return request(context, HttpMethod.POST, collectionUrl, dataObject, dataString, targetObject, false);
 	}
 	
 	public static void useETagInNextRequest(String eTag) {

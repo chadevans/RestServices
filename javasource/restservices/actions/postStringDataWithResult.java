@@ -9,25 +9,25 @@
 
 package restservices.actions;
 
-import restservices.consume.RestConsumer;
-import com.mendix.systemwideinterfaces.core.IMendixObject;
 import com.mendix.systemwideinterfaces.core.IContext;
 import com.mendix.webui.CustomJavaAction;
+import restservices.consume.RestConsumer;
+import com.mendix.systemwideinterfaces.core.IMendixObject;
 
 /**
  * 
  */
-public class postWithResult extends CustomJavaAction<IMendixObject>
+public class postStringDataWithResult extends CustomJavaAction<IMendixObject>
 {
 	private String collectionUrl;
-	private IMendixObject dataObject;
+	private String dataString;
 	private IMendixObject responseData;
 
-	public postWithResult(IContext context, String collectionUrl, IMendixObject dataObject, IMendixObject responseData)
+	public postStringDataWithResult(IContext context, String collectionUrl, String dataString, IMendixObject responseData)
 	{
 		super(context);
 		this.collectionUrl = collectionUrl;
-		this.dataObject = dataObject;
+		this.dataString = dataString;
 		this.responseData = responseData;
 	}
 
@@ -35,7 +35,7 @@ public class postWithResult extends CustomJavaAction<IMendixObject>
 	public IMendixObject executeAction() throws Exception
 	{
 		// BEGIN USER CODE
-		return RestConsumer.postObject(getContext(), collectionUrl, dataObject, null, responseData).getMendixObject();
+		return RestConsumer.postObject(getContext(), collectionUrl, null, dataString, responseData).getMendixObject();
 		// END USER CODE
 	}
 
@@ -45,7 +45,7 @@ public class postWithResult extends CustomJavaAction<IMendixObject>
 	@Override
 	public String toString()
 	{
-		return "postWithResult";
+		return "postStringDataWithResult";
 	}
 
 	// BEGIN EXTRA CODE

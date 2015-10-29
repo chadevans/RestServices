@@ -35,7 +35,7 @@ public class post2 extends CustomJavaAction<IMendixObject>
 	public IMendixObject executeAction() throws Exception
 	{
 		// BEGIN USER CODE
-		return RestConsumer.postObject(getContext(), collectionUrl, dataObject, responseData).getMendixObject();
+		return RestConsumer.postObject(getContext(), collectionUrl, dataObject, null, responseData).getMendixObject();
 		// END USER CODE
 	}
 
