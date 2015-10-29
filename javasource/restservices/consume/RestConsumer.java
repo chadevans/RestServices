@@ -369,6 +369,10 @@ public class RestConsumer {
 			}
 		});
 	}
+
+	public static void getCollection(final IContext context, String collectionUrl, final List<IMendixObject> resultList, final IMendixObject firstResult) throws Exception {
+		getCollection(context, collectionUrl, null, resultList, firstResult);
+	}
 	
 	public static void getCollection(final IContext context, String collectionUrl, final IMendixObject requestData, final List<IMendixObject> resultList, final IMendixObject firstResult) throws Exception {
 		if (resultList == null || resultList.size() > 0)
@@ -659,6 +663,11 @@ public class RestConsumer {
 	public static RequestResult postObject(IContext context, String collectionUrl,
 			IMendixObject dataObject, Boolean asFormData) throws Exception {
 		return request(context, HttpMethod.POST, collectionUrl, dataObject, null, asFormData);
+	}
+	
+	public static RequestResult postObject(IContext context, String collectionUrl,
+			IMendixObject dataObject, IMendixObject targetObject) throws Exception {
+		return request(context, HttpMethod.POST, collectionUrl, dataObject, null, targetObject, false);
 	}
 	
 	public static RequestResult postObject(IContext context, String collectionUrl,
